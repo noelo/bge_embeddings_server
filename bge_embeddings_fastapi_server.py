@@ -5,12 +5,10 @@ from bertcpp import BertCppEmbeddings
 from embeddings_models import EmbeddingResponse, EmbeddingRequest
 from langchain.embeddings.base import Embeddings
 import glob
-from decouple import config
 import logging
 import os 
 import traceback
 from datetime import datetime
-from hashlib import sha3_256
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -171,6 +169,7 @@ def calculate_sentence_embedding(model: Embeddings, text: str) -> np.array:
             if retry_count > 0:
                 logger.info(f"Attempting again calculate sentence embedding. Attempt number {retry_count + 1}")
             sentence_embedding = model.embed_query(text)
+            logger.info(f"Returning embeddings of size: {len(sentence_embedding)}")
         except TypeError as e:
             logger.error(f"TypeError in calculate_sentence_embedding: {e}")
             raise
