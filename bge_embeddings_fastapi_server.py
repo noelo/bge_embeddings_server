@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0,'bert.cpp/python/')
+# sys.path.insert(0,'bert.cpp/python/')
 
 from bertcpp import BertCppEmbeddings
 from embeddings_models import EmbeddingResponse, EmbeddingRequest
