@@ -1,6 +1,4 @@
 import sys
-# sys.path.insert(0,'bert.cpp/python/')
-
 from bertcpp import BertCppEmbeddings
 from embeddings_models import EmbeddingResponse, EmbeddingRequest
 from langchain.embeddings.base import Embeddings
@@ -12,7 +10,7 @@ from datetime import datetime
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse
 from langchain.embeddings import LlamaCppEmbeddings
 from pydantic_settings import BaseSettings
 from pydantic import Field
