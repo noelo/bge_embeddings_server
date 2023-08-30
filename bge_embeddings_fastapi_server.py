@@ -1,49 +1,23 @@
 import sys
 sys.path.insert(0,'bert.cpp/python/')
 
-
 from bertcpp import BertCppEmbeddings
 from embeddings_models import EmbeddingResponse, EmbeddingRequest
 from langchain.embeddings.base import Embeddings
-import asyncio
 import glob
 from decouple import config
-import json
 import logging
 import os 
-import time
 import traceback
-import urllib.request
-from collections import defaultdict
 from datetime import datetime
 from hashlib import sha3_256
-from logging.handlers import RotatingFileHandler
-from typing import List, Optional, Tuple, Dict
 import numpy as np
-
-# from decouple import config
 import uvicorn
-# import psutil
-import fastapi
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from langchain.embeddings import LlamaCppEmbeddings
-# from sklearn.metrics.pairwise import cosine_similarity
-# from sqlalchemy import select
-# from sqlalchemy import text as sql_text
-# from sqlalchemy.exc import SQLAlchemyError, OperationalError, IntegrityError
-# from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-# from sqlalchemy.orm import sessionmaker, joinedload
-# import faiss
-# import pandas as pd
-# import PyPDF2
-# from magic import Magic
-# from llama_cpp import Llama
-# from scipy.stats import rankdata
-# from sklearn.preprocessing import KBinsDiscretizer
-# from numba import jit
-# from hyppo.independence import Hsic
-
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 logger = logging.getLogger()
@@ -56,42 +30,25 @@ logger.addHandler(sh)
 logger = logging.getLogger(__name__)
 configured_logger = logger
 
-# Global variables
-DEFAULT_MODEL_TYPE = "BERT"
-EMBEDDING_SERVER_LISTEN_PORT = config("LLAMA_EMBEDDING_SERVER_LISTEN_PORT", default=8089, cast=int)
-DEFAULT_MODEL_NAME = config("DEFAULT_MODEL_NAME", default="ggml-model-q4_0.bin", cast=str)
-DEFAULT_MODEL_DIR = config("DEFAULT_MODEL_DIR", default="/home/noelo/dev/bge_embeddings_server/models/", cast=str)
-LLM_CONTEXT_SIZE_IN_TOKENS = config("LLM_CONTEXT_SIZE_IN_TOKENS", default=512, cast=int)
-MINIMUM_STRING_LENGTH_FOR_DOCUMENT_EMBEDDING = config("MINIMUM_STRING_LENGTH_FOR_DOCUMENT_EMBEDDING", default=15, cast=int)
-# USE_PARALLEL_INFERENCE_QUEUE = config("USE_PARALLEL_INFERENCE_QUEUE", default=False, cast=bool)
-# MAX_CONCURRENT_PARALLEL_INFERENCE_TASKS = config("MAX_CONCURRENT_PARALLEL_INFERENCE_TASKS", default=10, cast=int)
-# USE_RAMDISK = config("USE_RAMDISK", default=False, cast=bool)
-# RAMDISK_PATH = config("RAMDISK_PATH", default="/mnt/ramdisk", cast=str)
-# RAMDISK_SIZE_IN_GB = config("RAMDISK_SIZE_IN_GB", default=1, cast=int)
-MAX_RETRIES = config("MAX_RETRIES", default=3, cast=int)
-# DB_WRITE_BATCH_SIZE = config("DB_WRITE_BATCH_SIZE", default=25, cast=int) 
-# RETRY_DELAY_BASE_SECONDS = config("RETRY_DELAY_BASE_SECONDS", default=1, cast=int)
-# JITTER_FACTOR = config("JITTER_FACTOR", default=0.1, cast=float)
-# BASE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+class Settings(BaseSettings):
+    DEFAULT_MODEL_TYPE: str = Field(default="BERT")
+    EMBEDDING_SERVER_LISTEN_PORT: int = Field(default=8089)
+    DEFAULT_MODEL_NAME: str = Field(default="ggml-model-q4_0.bin")
+    DEFAULT_MODEL_DIR: str = Field(default="/home/noelo/dev/bge_embeddings_server/models/")
+    LLM_CONTEXT_SIZE_IN_TOKENS: int = Field(default=512)
+    MINIMUM_STRING_LENGTH_FOR_DOCUMENT_EMBEDDING: int = Field(default=15)
+    MAX_RETRIES: int = Field(default=3)
+
 embedding_model_cache = {} # Model cache to store loaded models
 
-
-
 app = FastAPI(docs_url="/")  # Set the Swagger UI to root
-# engine = create_async_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
-# AsyncSessionLocal = sessionmaker(
-#     bind=engine,
-#     class_=AsyncSession,
-#     expire_on_commit=False,
-#     autoflush=False
-# )
    
 # # Core functions start here:  
 
 async def get_or_compute_embedding(request: EmbeddingRequest, req: Request = None, client_ip: str = None) -> EmbeddingResponse:
     request_time = datetime.utcnow()  # Capture request time as datetime object
 
-    model = load_model(DEFAULT_MODEL_NAME)
+    model = load_model(Settings().DEFAULT_MODEL_NAME)
     
     embedding_list = calculate_sentence_embedding(model, request.input)
     
@@ -106,15 +63,12 @@ async def get_or_compute_embedding(request: EmbeddingRequest, req: Request = Non
     if word_length_of_input_text > 0:
         logger.info(f"Embedding calculated for '{request.input}' in {total_time} seconds, or an average of {total_time/word_length_of_input_text :.2f} seconds per word")
     
-    res = EmbeddingResponse(index=0, embedding= embedding_list)
-    # return {"embedding": embedding_list}
-    # return embedding_list
-    return res
+    return EmbeddingResponse(index=0, embedding=embedding_list)
 
 def load_model(model_name: str, raise_http_exception: bool = True):
     if model_name in embedding_model_cache:
         return embedding_model_cache[model_name]
-    models_dir= DEFAULT_MODEL_DIR
+    models_dir= Settings().DEFAULT_MODEL_DIR
     matching_files = glob.glob(os.path.join(models_dir, f"{model_name}*"))
     if not matching_files:
         logger.error(f"No model file found matching: {model_name}")
@@ -123,8 +77,8 @@ def load_model(model_name: str, raise_http_exception: bool = True):
     model_file_path = matching_files[0]
     logger.info(f"Loading the model from: {model_file_path}")
     try:
-        if DEFAULT_MODEL_TYPE == 'LLAMA':
-            model_instance = LlamaCppEmbeddings(model_path=model_file_path, use_mlock=True, n_ctx=LLM_CONTEXT_SIZE_IN_TOKENS)
+        if Settings().DEFAULT_MODEL_TYPE == 'LLAMA':
+            model_instance = LlamaCppEmbeddings(model_path=model_file_path, use_mlock=True, n_ctx=Settings().LLM_CONTEXT_SIZE_IN_TOKENS)
             model_instance.client.verbose = False
         else:
             model_instance = BertCppEmbeddings(model_file_path)
@@ -275,31 +229,6 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
           summary="Retrieve Embedding Vector for a Given Text String",
           description="""Retrieve the embedding vector for a given input text string using the specified model.
 
-### Parameters:
-- `request`: A JSON object containing the input text string (`text`) and the model name.
-- `token`: Security token (optional).
-
-### Request JSON Format:
-The request must contain the following attributes:
-- `text`: The input text for which the embedding vector is to be retrieved.
-- `model_name`: The model used to calculate the embedding (optional, will use the default model if not provided).
-
-### Example (note that `model_name` is optional):
-```json
-{
-  "text": "This is a sample text.",
-  "model_name": "llama2_7b_chat_uncensored"
-}
-```
-
-### Response:
-The response will include the embedding vector for the input text string.
-
-### Example Response:
-```json
-{
-  "embedding": [0.1234, 0.5678, ...]
-}
 ```""", response_description="A JSON object containing the embedding vector for the input text.")
 async def get_embedding_vector_for_string(request: EmbeddingRequest, req: Request = None) -> EmbeddingResponse:
     try:
@@ -309,22 +238,13 @@ async def get_embedding_vector_for_string(request: EmbeddingRequest, req: Reques
         logger.error(traceback.format_exc()) # Print the traceback
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
-
 @app.on_event("startup")
 async def startup_event():
-    # global db_writer, faiss_indexes, token_faiss_indexes, associated_texts_by_model
-    # await initialize_db()
-    queue = asyncio.Queue()
-    # await db_writer.initialize_processing_hashes() 
-    # list_of_downloaded_model_names = download_models()
-    # for model_name in list_of_downloaded_model_names:
+    logger.info(Settings())
     try:
-        load_model(DEFAULT_MODEL_NAME, raise_http_exception=False)
+        load_model(Settings().DEFAULT_MODEL_NAME, raise_http_exception=False)
     except FileNotFoundError as e:
         logger.error(e)
-    # faiss_indexes, token_faiss_indexes, associated_texts_by_model = await build_faiss_indexes()
-
-
+        
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=EMBEDDING_SERVER_LISTEN_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=Settings().EMBEDDING_SERVER_LISTEN_PORT)
