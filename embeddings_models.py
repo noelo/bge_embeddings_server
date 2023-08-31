@@ -9,6 +9,7 @@ class EmbeddingRequest(BaseModel):
     input: str
     model: Optional[str] = DEFAULT_MODEL_NAME
 
+
 class EmbeddingResponse(BaseModel):
     index: int
     object: str = DEFAULT_OBJECT_NAME
