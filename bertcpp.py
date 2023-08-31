@@ -3,7 +3,7 @@ from typing import Union, List
 import numpy as np
 from typing import Any, List, Optional
 from langchain.embeddings.base import Embeddings
-from langchain.pydantic_v1 import  Field
+from langchain.pydantic_v1 import Field
 
 N_THREADS = 6
 
@@ -14,7 +14,7 @@ class BertCppEmbeddings(Embeddings):
 
     n_ctx: int = Field(512, alias="n_ctx")
     """Token context window."""
-    
+
     n_threads: Optional[int] = Field(N_THREADS, alias="n_threads")
     """Number of threads to use. If None, the number 
     of threads is automatically determined."""
@@ -22,8 +22,7 @@ class BertCppEmbeddings(Embeddings):
     n_batch: Optional[int] = Field(16, alias="n_batch")
     """Number of tokens to process in parallel.
     Should be a number between 1 and n_ctx."""
-    
-    
+
     def __init__(self, fname):
         self.lib = ctypes.cdll.LoadLibrary("libbert.so")
 
@@ -32,16 +31,16 @@ class BertCppEmbeddings(Embeddings):
 
         self.lib.bert_n_embd.restype = ctypes.c_int32
         self.lib.bert_n_embd.argtypes = [ctypes.c_void_p]
-        
+
         self.lib.bert_free.argtypes = [ctypes.c_void_p]
 
         self.lib.bert_encode_batch.argtypes = [
-            ctypes.c_void_p,    # struct bert_ctx * ctx,
-            ctypes.c_int32,     # int32_t n_threads,  
-            ctypes.c_int32,     # int32_t n_batch_size
-            ctypes.c_int32,     # int32_t n_inputs
-            ctypes.POINTER(ctypes.c_char_p),                # const char ** texts
-            ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), # float ** embeddings
+            ctypes.c_void_p,  # struct bert_ctx * ctx,
+            ctypes.c_int32,  # int32_t n_threads,
+            ctypes.c_int32,  # int32_t n_batch_size
+            ctypes.c_int32,  # int32_t n_inputs
+            ctypes.POINTER(ctypes.c_char_p),  # const char ** texts
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_float)),  # float ** embeddings
         ]
 
         self.ctx = self.lib.bert_load_from_file(fname.encode("utf-8"))
@@ -59,7 +58,9 @@ class BertCppEmbeddings(Embeddings):
         n = len(sentences)
 
         embeddings = np.zeros((n, self.n_embd), dtype=np.float32)
-        embeddings_pointers = (ctypes.POINTER(ctypes.c_float) * len(embeddings))(*[e.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) for e in embeddings])
+        embeddings_pointers = (ctypes.POINTER(ctypes.c_float) * len(embeddings))(
+            *[e.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) for e in embeddings]
+        )
 
         texts = (ctypes.c_char_p * n)()
         for j, sentence in enumerate(sentences):
@@ -83,7 +84,7 @@ class BertCppEmbeddings(Embeddings):
         """
         embeddings = [self.embed(text) for text in texts]
         return [list(map(float, e)) for e in embeddings]
-    
+
     def embed_query(self, text: str) -> List[float]:
         """Embed a query using the Llama model.
 
@@ -96,8 +97,9 @@ class BertCppEmbeddings(Embeddings):
         embedding = self.embed(text)
         return list(map(float, embedding))
 
-# def main():  
-#     model_path = '../../models/ggml-model-q4_1.bin'  
+
+# def main():
+#     model_path = '../../models/ggml-model-q4_1.bin'
 #     model = BertCppEmbeddings(model_path)
 
 #     txt_file = "sample_client_texts.txt"
@@ -107,7 +109,7 @@ class BertCppEmbeddings(Embeddings):
 #     print(datetime.datetime.now())
 #     embedded_texts = model.embed_documents(texts)
 #     print(datetime.datetime.now())
-    
+
 #     print(f"Loaded {len(texts)} lines.")
 
 #     def print_results(res):
@@ -142,7 +144,6 @@ class BertCppEmbeddings(Embeddings):
 #             break
 #         # Call the query function to find the closest texts
 #         print_results(query(input_text))
-
 
 
 # if __name__ == '__main__':

@@ -4,7 +4,7 @@ from embeddings_models import EmbeddingResponse, EmbeddingRequest
 from langchain.embeddings.base import Embeddings
 import glob
 import logging
-import os 
+import os
 import traceback
 from datetime import datetime
 import numpy as np
@@ -18,7 +18,7 @@ from pydantic import Field
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 sh = logging.StreamHandler()
 sh.setFormatter(formatter)
@@ -26,45 +26,62 @@ logger.addHandler(sh)
 logger = logging.getLogger(__name__)
 configured_logger = logger
 
+
 class Settings(BaseSettings):
     DEFAULT_MODEL_TYPE: str = Field(default="BERT")
     EMBEDDING_SERVER_LISTEN_PORT: int = Field(default=8089)
     DEFAULT_MODEL_NAME: str = Field(default="ggml-model-q4_0.bin")
-    DEFAULT_MODEL_DIR: str = Field(default="/home/noelo/dev/bge_embeddings_server/models/")
+    DEFAULT_MODEL_DIR: str = Field(
+        default="/home/noelo/dev/bge_embeddings_server/models/"
+    )
     LLM_CONTEXT_SIZE_IN_TOKENS: int = Field(default=512)
     MINIMUM_STRING_LENGTH_FOR_DOCUMENT_EMBEDDING: int = Field(default=15)
     MAX_RETRIES: int = Field(default=3)
 
-embedding_model_cache = {} # Model cache to store loaded models
+
+embedding_model_cache = {}  # Model cache to store loaded models
 
 app = FastAPI(docs_url="/")  # Set the Swagger UI to root
-   
-# # Core functions start here:  
 
-async def get_or_compute_embedding(request: EmbeddingRequest, req: Request = None, client_ip: str = None) -> EmbeddingResponse:
+# # Core functions start here:
+
+
+async def get_or_compute_embedding(
+    request: EmbeddingRequest, req: Request = None, client_ip: str = None
+) -> EmbeddingResponse:
     request_time = datetime.utcnow()  # Capture request time as datetime object
 
     model = load_model(Settings().DEFAULT_MODEL_NAME)
-    
+
     embedding_list = calculate_sentence_embedding(model, request.input)
-    
+
     if embedding_list is None:
-        logger.error(f"Could not calculate the embedding for the given text: '{request.input}' !'")
-        raise HTTPException(status_code=400, detail="Could not calculate the embedding for the given text")
-    
+        logger.error(
+            f"Could not calculate the embedding for the given text: '{request.input}' !'"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Could not calculate the embedding for the given text",
+        )
+
     response_time = datetime.utcnow()  # Capture response time as datetime object
-    total_time = (response_time - request_time).total_seconds() # Calculate total time using datetime objects
-    
+    total_time = (
+        response_time - request_time
+    ).total_seconds()  # Calculate total time using datetime objects
+
     word_length_of_input_text = len(request.input.split())
     if word_length_of_input_text > 0:
-        logger.info(f"Embedding calculated for '{request.input}' in {total_time} seconds, or an average of {total_time/word_length_of_input_text :.2f} seconds per word")
-    
+        logger.info(
+            f"Embedding calculated for '{request.input}' in {total_time} seconds, or an average of {total_time/word_length_of_input_text :.2f} seconds per word"
+        )
+
     return EmbeddingResponse(index=0, embedding=embedding_list)
+
 
 def load_model(model_name: str, raise_http_exception: bool = True):
     if model_name in embedding_model_cache:
         return embedding_model_cache[model_name]
-    models_dir= Settings().DEFAULT_MODEL_DIR
+    models_dir = Settings().DEFAULT_MODEL_DIR
     matching_files = glob.glob(os.path.join(models_dir, f"{model_name}*"))
     if not matching_files:
         logger.error(f"No model file found matching: {model_name}")
@@ -73,15 +90,19 @@ def load_model(model_name: str, raise_http_exception: bool = True):
     model_file_path = matching_files[0]
     logger.info(f"Loading the model from: {model_file_path}")
     try:
-        if Settings().DEFAULT_MODEL_TYPE == 'LLAMA':
-            model_instance = LlamaCppEmbeddings(model_path=model_file_path, use_mlock=True, n_ctx=Settings().LLM_CONTEXT_SIZE_IN_TOKENS)
+        if Settings().DEFAULT_MODEL_TYPE == "LLAMA":
+            model_instance = LlamaCppEmbeddings(
+                model_path=model_file_path,
+                use_mlock=True,
+                n_ctx=Settings().LLM_CONTEXT_SIZE_IN_TOKENS,
+            )
             model_instance.client.verbose = False
         else:
             model_instance = BertCppEmbeddings(model_file_path)
-            
+
         embedding_model_cache[model_name] = model_instance
         return model_instance
-    
+
     except TypeError as e:
         logger.error(f"TypeError occurred while loading the model: {e}")
         raise
@@ -91,6 +112,7 @@ def load_model(model_name: str, raise_http_exception: bool = True):
             raise HTTPException(status_code=404, detail="Model file not found")
         else:
             raise FileNotFoundError(f"No model file found matching: {model_name}")
+
 
 # def load_token_level_embedding_model(model_name: str, raise_http_exception: bool = True):
 #     try:
@@ -158,14 +180,17 @@ def load_model(model_name: str, raise_http_exception: bool = True):
 #     logger.info(f"Writing combined feature vector for database write for token-level embedding bundle ID: {token_level_embedding_bundle_id} to the database...")
 #     await db_writer.enqueue_write([combined_feature_vector_db_object])
 #     return combined_feature_vector
-      
+
+
 def calculate_sentence_embedding(model: Embeddings, text: str) -> np.array:
     sentence_embedding = None
     retry_count = 0
     while sentence_embedding is None and retry_count < 3:
         try:
             if retry_count > 0:
-                logger.info(f"Attempting again calculate sentence embedding. Attempt number {retry_count + 1}")
+                logger.info(
+                    f"Attempting again calculate sentence embedding. Attempt number {retry_count + 1}"
+                )
             sentence_embedding = model.embed_query(text)
             logger.info(f"Returning embeddings of size: {len(sentence_embedding)}")
         except TypeError as e:
@@ -173,12 +198,15 @@ def calculate_sentence_embedding(model: Embeddings, text: str) -> np.array:
             raise
         except Exception as e:
             logger.error(f"Exception in calculate_sentence_embedding: {e}")
-            text = text[:-int(len(text) * 0.1)]
+            text = text[: -int(len(text) * 0.1)]
             retry_count += 1
-            logger.info(f"Trimming sentence due to too many tokens. New length: {len(text)}")
+            logger.info(
+                f"Trimming sentence due to too many tokens. New length: {len(text)}"
+            )
     if sentence_embedding is None:
         logger.error("Failed to calculate sentence embedding after multiple attempts")
     return sentence_embedding
+
 
 # async def compute_embeddings_for_document(strings: list, model_name: str, client_ip: str) -> List[Tuple[str, np.array]]:
 #     results = []
@@ -214,26 +242,37 @@ def calculate_sentence_embedding(model: Embeddings, text: str) -> np.array:
 #     filtered_results = [(text, embedding) for text, embedding in results if embedding is not None] # Filter out results with None embeddings (applicable to parallel processing) and return
 #     return filtered_results
 
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception(exc)
-    return JSONResponse(status_code=500, content={"message": "An unexpected error occurred"})
+    return JSONResponse(
+        status_code=500, content={"message": "An unexpected error occurred"}
+    )
 
-#FastAPI Endpoints start here:
 
-@app.post("/get_embedding_vector_for_string/",
-          response_model=EmbeddingResponse,
-          summary="Retrieve Embedding Vector for a Given Text String",
-          description="""Retrieve the embedding vector for a given input text string using the specified model.
+# FastAPI Endpoints start here:
 
-```""", response_description="A JSON object containing the embedding vector for the input text.")
-async def get_embedding_vector_for_string(request: EmbeddingRequest, req: Request = None) -> EmbeddingResponse:
+
+@app.post(
+    "/get_embedding_vector_for_string/",
+    response_model=EmbeddingResponse,
+    summary="Retrieve Embedding Vector for a Given Text String",
+    description="""Retrieve the embedding vector for a given input text string using the specified model.
+
+```""",
+    response_description="A JSON object containing the embedding vector for the input text.",
+)
+async def get_embedding_vector_for_string(
+    request: EmbeddingRequest, req: Request = None
+) -> EmbeddingResponse:
     try:
         return await get_or_compute_embedding(request, req)
     except Exception as e:
         logger.error(f"An error occurred while processing the request: {e}")
-        logger.error(traceback.format_exc()) # Print the traceback
+        logger.error(traceback.format_exc())  # Print the traceback
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -242,6 +281,7 @@ async def startup_event():
         load_model(Settings().DEFAULT_MODEL_NAME, raise_http_exception=False)
     except FileNotFoundError as e:
         logger.error(e)
-        
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=Settings().EMBEDDING_SERVER_LISTEN_PORT)
